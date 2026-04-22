@@ -7,7 +7,7 @@ Type=simple
 User=borger
 Group=borger
 WorkingDirectory=/opt/borger
-ExecStart=/opt/borger/borger
+ExecStart=/usr/bin/node /opt/borger/server.js
 Environment=APP_ADDR=:8080
 Restart=on-failure
 RestartSec=5

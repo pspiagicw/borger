@@ -1,50 +1,50 @@
-# Borger
+# Borger (Node.js)
 
-Simple Go web app that runs `borgmatic list --json` and renders a dashboard for repositories and archives.
-
-The app runs borgmatic as:
+Node.js web app that runs:
 `borgmatic -c ~/.config/borgmatic.d list --json`
+and renders a backup dashboard.
 
 ## Development Run
 
 1. Install deps:
-   - `go`
    - `node`, `npm`
    - `borgmatic`
-2. Install frontend tooling:
+2. Install packages:
    - `npm install`
 3. Build CSS:
    - `npm run build:css`
 4. Start server:
-   - `go run ./cmd/web`
+   - `npm run dev`
 5. Open:
-   - `http://localhost:8080`
+   - `http://localhost:8090`
 
-## Build Binary
+## Make Targets
 
-1. Build local binary:
-   - `make build`
-2. Output:
-   - `./bin/borger`
+1. `make setup` installs packages and builds CSS.
+2. `make dev` runs the app (default `APP_ADDR=:8090`).
+3. `make run` runs the app for normal execution.
+4. `make package` creates a deploy tarball in `dist/`.
 
 ## Package for Fedora/Homelab
 
-1. Build distribution tarball:
+1. Build package:
    - `make package`
 2. Output:
-   - `./dist/borger-<version>-linux-amd64.tar.gz`
+   - `./dist/borger-node-<version>.tar.gz`
 3. Extract on target host:
    - `sudo mkdir -p /opt/borger`
-   - `sudo tar -xzf borger-<version>-linux-amd64.tar.gz -C /opt/borger`
-4. Create service user:
+   - `sudo tar -xzf borger-node-<version>.tar.gz -C /opt/borger`
+4. Install runtime deps on Fedora:
+   - `sudo dnf install -y nodejs borgmatic`
+5. Create service user:
    - `sudo useradd --system --home /opt/borger --shell /sbin/nologin borger`
-5. Install systemd unit:
-   - `sudo cp /opt/borger/borger.service /etc/systemd/system/borger.service`
+6. Install and start systemd service:
+   - `sudo cp /opt/borger/deploy/borger.service /etc/systemd/system/borger.service`
    - `sudo systemctl daemon-reload`
    - `sudo systemctl enable --now borger`
-6. Check status:
+7. Check status:
    - `systemctl status borger`
 
 ## Environment variables
 
-- `APP_ADDR` (default `:8080`)
+- `APP_ADDR` (default `:8090`)

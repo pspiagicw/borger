@@ -1,0 +1,439 @@
+const express = require('express');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const os = require('os');
+const path = require('path');
+
+const execFileAsync = promisify(execFile);
+
+const app = express();
+const appAddr = process.env.APP_ADDR || ':8080';
+const listenTarget = normalizeListenTarget(appAddr);
+
+app.use('/static', express.static(path.join(__dirname, 'web', 'static')));
+
+app.get('/healthz', (_req, res) => {
+  res.type('text/plain').send('ok');
+});
+
+app.get('/', async (_req, res) => {
+  const viewModel = await buildDashboardViewModel();
+  res.status(200).type('html').send(renderPage(viewModel));
+});
+
+if (listenTarget.host) {
+  app.listen(listenTarget.port, listenTarget.host, () => {
+    console.log(`server listening on ${listenTarget.host}:${listenTarget.port}`);
+  });
+} else {
+  app.listen(listenTarget.port, () => {
+    console.log(`server listening on ${listenTarget.port}`);
+  });
+}
+
+function normalizeListenTarget(addr) {
+  if (/^\d+$/.test(addr)) {
+    return { port: Number(addr), host: '' };
+  }
+
+  if (/^:\d+$/.test(addr)) {
+    return { port: Number(addr.slice(1)), host: '' };
+  }
+
+  const hostPortMatch = addr.match(/^([^:]+):(\d+)$/);
+  if (hostPortMatch) {
+    return {
+      host: hostPortMatch[1],
+      port: Number(hostPortMatch[2]),
+    };
+  }
+
+  return { port: 8080, host: '' };
+}
+
+async function buildDashboardViewModel() {
+  const now = new Date();
+
+  try {
+    const entries = await listBorgmaticArchives();
+    const repositories = [];
+    let latest = null;
+
+    for (let i = 0; i < entries.length; i += 1) {
+      const entry = entries[i] || {};
+      const repository = entry.repository || {};
+      const parsedArchives = (entry.archives || [])
+        .map((archive) => {
+          const parsedTime = parseArchiveTime(archive);
+          if (!parsedTime) return null;
+          return {
+            name: archive.name || archive.archive || 'Unnamed archive',
+            time: parsedTime,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.time - a.time);
+
+      const repoName = chooseRepoName(repository);
+      const locationFull = repository.location || '';
+      const locationMasked = maskLocation(locationFull);
+
+      const repoView = {
+        id: `repo-${i}`,
+        name: repoName,
+        locationFull,
+        locationMasked,
+        latest: parsedArchives[0] ? formatTimestampLong(parsedArchives[0].time) : '',
+        latestAgo: parsedArchives[0] ? timeAgo(now - parsedArchives[0].time) : '',
+        archives: parsedArchives.map((archive) => ({
+          name: archive.name,
+          timestamp: formatTimestampShort(archive.time),
+          ago: timeAgo(now - archive.time),
+        })),
+      };
+
+      if (parsedArchives[0] && (!latest || parsedArchives[0].time > latest.time)) {
+        latest = {
+          repository: repoName,
+          time: parsedArchives[0].time,
+        };
+      }
+
+      repositories.push(repoView);
+    }
+
+    repositories.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+
+    return {
+      generatedAt: formatGeneratedAt(now),
+      latest: latest
+        ? {
+            repository: latest.repository,
+            timestamp: formatTimestampLong(latest.time),
+            ago: timeAgo(now - latest.time),
+          }
+        : null,
+      repositories,
+      error: '',
+    };
+  } catch (error) {
+    return {
+      generatedAt: formatGeneratedAt(now),
+      latest: null,
+      repositories: [],
+      error: error.message || String(error),
+    };
+  }
+}
+
+async function listBorgmaticArchives() {
+  const configDir = path.join(os.homedir(), '.config', 'borgmatic.d');
+  const { stdout, stderr } = await execFileAsync(
+    'borgmatic',
+    ['-c', configDir, 'list', '--json'],
+    {
+      maxBuffer: 20 * 1024 * 1024,
+      env: process.env,
+    }
+  ).catch((error) => {
+    const stderrText = (error.stderr || '').trim();
+    const detail = stderrText ? `: ${stderrText}` : '';
+    throw new Error(`run borgmatic -c ${configDir} list --json failed${detail}`);
+  });
+
+  if (stderr && stderr.trim()) {
+    console.warn(stderr.trim());
+  }
+
+  let entries;
+  try {
+    entries = JSON.parse(stdout);
+  } catch (error) {
+    throw new Error(`parse borgmatic json failed: ${error.message}`);
+  }
+
+  if (!Array.isArray(entries)) {
+    throw new Error('unexpected borgmatic output format');
+  }
+
+  return entries;
+}
+
+function parseArchiveTime(archive) {
+  const candidates = [archive?.time, archive?.start];
+  for (const rawValue of candidates) {
+    if (!rawValue || typeof rawValue !== 'string') {
+      continue;
+    }
+
+    const normalized = normalizeTimestamp(rawValue);
+    const parsed = new Date(normalized);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function normalizeTimestamp(value) {
+  let normalized = value.trim();
+
+  normalized = normalized.replace(/\.(\d{3})\d+/, '.$1');
+
+  if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized)) {
+    normalized += 'Z';
+  }
+
+  return normalized;
+}
+
+function chooseRepoName(repository) {
+  if (repository?.label) {
+    return repository.label;
+  }
+
+  const host = extractHost(repository?.location || '');
+  if (host) {
+    return `Repository @ ${host}`;
+  }
+
+  if (!repository?.location) {
+    return 'Unknown Repository';
+  }
+
+  return 'Repository';
+}
+
+function extractHost(location) {
+  if (!location) {
+    return '';
+  }
+
+  if (location.includes('://')) {
+    try {
+      const parsed = new URL(location);
+      return parsed.hostname || '';
+    } catch (_error) {
+      return '';
+    }
+  }
+
+  if (location.includes('@')) {
+    const [, rest = ''] = location.split('@', 2);
+    return rest.split(':', 1)[0];
+  }
+
+  return '';
+}
+
+function maskLocation(location) {
+  if (!location) {
+    return 'Location unavailable';
+  }
+
+  const host = extractHost(location);
+  if (host) {
+    return `${host} (hidden)`;
+  }
+
+  if (location.length <= 18) {
+    return 'location hidden';
+  }
+
+  return `${location.slice(0, 10)}...${location.slice(-8)}`;
+}
+
+const longDateFormatter = new Intl.DateTimeFormat('en-US', {
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+  timeZone: 'UTC',
+});
+
+const shortDateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+  timeZone: 'UTC',
+});
+
+const generatedAtFormatter = new Intl.DateTimeFormat('en-US', {
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+  timeZone: 'UTC',
+});
+
+function formatTimestampLong(date) {
+  return `${longDateFormatter.format(date)} UTC`;
+}
+
+function formatTimestampShort(date) {
+  return `${shortDateFormatter.format(date)} UTC`;
+}
+
+function formatGeneratedAt(date) {
+  return `${generatedAtFormatter.format(date)} UTC`;
+}
+
+function timeAgo(deltaMs) {
+  if (deltaMs < 0) {
+    return 'in the future';
+  }
+
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (deltaMs < minute) {
+    return 'just now';
+  }
+
+  if (deltaMs >= day) {
+    const value = Math.floor(deltaMs / day);
+    return `${value} day${value === 1 ? '' : 's'} ago`;
+  }
+
+  if (deltaMs >= hour) {
+    const value = Math.floor(deltaMs / hour);
+    return `${value} hour${value === 1 ? '' : 's'} ago`;
+  }
+
+  const value = Math.floor(deltaMs / minute);
+  return `${value} minute${value === 1 ? '' : 's'} ago`;
+}
+
+function renderPage(viewModel) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Borger Dashboard</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="relative isolate overflow-hidden">
+    <div class="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_20%,#0ea5e920_0%,#020617_45%),radial-gradient(circle_at_80%_10%,#22c55e20_0%,#020617_40%)]"></div>
+    <main class="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+      ${renderDashboard(viewModel)}
+    </main>
+  </div>
+  <script>
+    document.addEventListener("click", function (event) {
+      const button = event.target.closest("[data-toggle-location]");
+      if (!button) return;
+
+      const id = button.getAttribute("data-toggle-location");
+      const masked = document.getElementById(id + "-masked");
+      const full = document.getElementById(id + "-full");
+      if (!masked || !full) return;
+
+      const isHidden = full.classList.contains("hidden");
+      if (isHidden) {
+        full.classList.remove("hidden");
+        masked.classList.add("hidden");
+        button.textContent = "Hide URL";
+        button.setAttribute("aria-expanded", "true");
+      } else {
+        full.classList.add("hidden");
+        masked.classList.remove("hidden");
+        button.textContent = "Show URL";
+        button.setAttribute("aria-expanded", "false");
+      }
+    });
+  </script>
+</body>
+</html>`;
+}
+
+function renderDashboard(viewModel) {
+  const hero = viewModel.latest
+    ? `<h1 class="mt-3 text-3xl font-semibold text-white sm:text-4xl">Latest backup</h1>
+       <p class="mt-3 text-xl text-cyan-200">${escapeHtml(viewModel.latest.timestamp)}</p>
+       <p class="mt-2 text-lg text-slate-300">${escapeHtml(viewModel.latest.ago)} on <span class="font-medium text-cyan-300">${escapeHtml(viewModel.latest.repository)}</span></p>`
+    : `<h1 class="mt-3 text-3xl font-semibold text-white sm:text-4xl">No backup data found</h1>
+       <p class="mt-2 text-slate-300">Run borgmatic backups to populate this dashboard.</p>`;
+
+  const errorBlock = viewModel.error
+    ? `<section class="mb-8 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-5 text-rose-100">
+         <h2 class="text-lg font-semibold">Failed to load backups</h2>
+         <p class="mt-2 break-all text-sm">${escapeHtml(viewModel.error)}</p>
+       </section>`
+    : '';
+
+  const repositories = viewModel.repositories.length
+    ? viewModel.repositories.map(renderRepositoryCard).join('')
+    : '<p class="text-slate-300">No repositories found in borgmatic output.</p>';
+
+  return `<header class="mb-8 rounded-3xl border border-slate-800 bg-slate-900/75 p-8 shadow-2xl shadow-cyan-900/20 backdrop-blur">
+    <p class="text-xs uppercase tracking-[0.22em] text-cyan-300/90">Borgmatic Backup Dashboard</p>
+    ${hero}
+    <p class="mt-5 text-sm text-slate-400">Generated at ${escapeHtml(viewModel.generatedAt)}</p>
+  </header>
+  ${errorBlock}
+  <section class="grid gap-6 md:grid-cols-2">${repositories}</section>`;
+}
+
+function renderRepositoryCard(repository) {
+  const archiveHtml = repository.archives.length
+    ? repository.archives
+        .map(
+          (archive) => `<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <p class="truncate text-sm font-medium text-slate-100">${escapeHtml(archive.name)}</p>
+              <p class="mt-1 text-xs text-slate-400">${escapeHtml(archive.timestamp)} (${escapeHtml(archive.ago)})</p>
+            </div>`
+        )
+        .join('')
+    : '<p class="text-sm text-slate-500">No archives available.</p>';
+
+  const latestLine = repository.latest
+    ? `<p class="mt-4 text-sm text-slate-300">Latest: <span class="text-cyan-300">${escapeHtml(repository.latest)}</span> (${escapeHtml(repository.latestAgo)})</p>`
+    : '<p class="mt-4 text-sm text-slate-400">No parseable archives found.</p>';
+
+  return `<article class="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-lg shadow-slate-950/50">
+    <h2 class="text-xl font-semibold text-white">${escapeHtml(repository.name)}</h2>
+
+    <div class="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/50 p-3">
+      <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">Repository URL</p>
+      <p id="${escapeHtml(repository.id)}-masked" class="mt-2 truncate font-mono text-sm text-slate-300">${escapeHtml(repository.locationMasked)}</p>
+      <p id="${escapeHtml(repository.id)}-full" class="mt-2 hidden break-all font-mono text-sm text-cyan-200">${escapeHtml(repository.locationFull)}</p>
+      <button
+        type="button"
+        data-toggle-location="${escapeHtml(repository.id)}"
+        class="mt-3 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
+        aria-expanded="false"
+      >
+        Show URL
+      </button>
+    </div>
+
+    ${latestLine}
+
+    <div class="mt-4 max-h-64 space-y-2 overflow-y-auto pr-2">
+      ${archiveHtml}
+    </div>
+  </article>`;
+}
+
+function escapeHtml(value) {
+  const text = String(value ?? '');
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}

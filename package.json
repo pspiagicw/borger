@@ -4,8 +4,13 @@
   "version": "0.1.0",
   "description": "Borgmatic backup dashboard",
   "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
     "build:css": "tailwindcss -i ./web/src/input.css -o ./web/static/css/app.css --minify",
     "watch:css": "tailwindcss -i ./web/src/input.css -o ./web/static/css/app.css --watch"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.17"
