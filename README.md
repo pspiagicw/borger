@@ -49,3 +49,4 @@ and renders a backup dashboard.
 
 - `APP_ADDR` (default `:8090`)
 - `APP_TIMEZONE` (default `Asia/Kolkata`; set `auto` to use server timezone)
+- `APP_CACHE_TTL_SECONDS` (default `120`)

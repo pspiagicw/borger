@@ -11,6 +11,15 @@ const appAddr = process.env.APP_ADDR || ':8080';
 const listenTarget = normalizeListenTarget(appAddr);
 const appTimeZone = resolveTimeZone(process.env.APP_TIMEZONE);
 const appTimeZoneLabel = appTimeZone === 'Asia/Kolkata' ? 'IST' : appTimeZone;
+const cacheTtlMs = getEnvNumber('APP_CACHE_TTL_SECONDS', 120) * 1000;
+
+const dashboardCache = {
+  data: null,
+  updatedAt: 0,
+  inFlight: null,
+  lastError: '',
+  refreshDurationMs: 0,
+};
 
 app.use('/static', express.static(path.join(__dirname, 'web', 'static')));
 
@@ -19,7 +28,7 @@ app.get('/healthz', (_req, res) => {
 });
 
 app.get('/api/dashboard', async (_req, res) => {
-  const viewModel = await buildDashboardViewModel();
+  const viewModel = await getDashboardViewModel();
   res.status(200).json(viewModel);
 });
 
@@ -57,79 +66,186 @@ function normalizeListenTarget(addr) {
   return { port: 8080, host: '' };
 }
 
-async function buildDashboardViewModel() {
+function getEnvNumber(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number(raw);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
+async function getDashboardViewModel() {
   const now = new Date();
+  const hasCache = Boolean(dashboardCache.data);
+  const cacheAgeMs = hasCache ? now.getTime() - dashboardCache.updatedAt : Infinity;
+  const isFresh = hasCache && cacheAgeMs <= cacheTtlMs;
 
-  try {
-    const entries = await listBorgmaticArchives();
-    const repositories = [];
-    let latest = null;
+  if (isFresh) {
+    return withCacheMeta(dashboardCache.data, {
+      source: 'cache',
+      stale: false,
+      refreshing: Boolean(dashboardCache.inFlight),
+      now,
+    });
+  }
 
-    for (let i = 0; i < entries.length; i += 1) {
-      const entry = entries[i] || {};
-      const repository = entry.repository || {};
-      const parsedArchives = (entry.archives || [])
-        .map((archive) => {
-          const parsedTime = parseArchiveTime(archive);
-          if (!parsedTime) return null;
-          return {
-            name: archive.name || archive.archive || 'Unnamed archive',
-            time: parsedTime,
-          };
-        })
-        .filter(Boolean)
-        .sort((a, b) => b.time - a.time);
-
-      const repoName = chooseRepoName(repository);
-      const locationFull = repository.location || '';
-      const locationMasked = maskLocation(locationFull);
-
-      const repoView = {
-        id: `repo-${i}`,
-        name: repoName,
-        locationFull,
-        locationMasked,
-        latest: parsedArchives[0] ? formatTimestampLong(parsedArchives[0].time) : '',
-        latestAgo: parsedArchives[0] ? timeAgo(now - parsedArchives[0].time) : '',
-        archives: parsedArchives.map((archive) => ({
-          name: archive.name,
-          timestamp: formatTimestampShort(archive.time),
-          ago: timeAgo(now - archive.time),
-        })),
-      };
-
-      if (parsedArchives[0] && (!latest || parsedArchives[0].time > latest.time)) {
-        latest = {
-          repository: repoName,
-          time: parsedArchives[0].time,
-        };
-      }
-
-      repositories.push(repoView);
+  if (hasCache) {
+    if (!dashboardCache.inFlight) {
+      void refreshDashboardCache();
     }
 
-    repositories.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+    return withCacheMeta(dashboardCache.data, {
+      source: 'cache',
+      stale: true,
+      refreshing: true,
+      now,
+    });
+  }
 
-    return {
-      generatedAt: formatGeneratedAt(now),
-      latest: latest
-        ? {
-            repository: latest.repository,
-            timestamp: formatTimestampLong(latest.time),
-            ago: timeAgo(now - latest.time),
-          }
-        : null,
-      repositories,
-      error: '',
-    };
+  try {
+    await refreshDashboardCache();
+    return withCacheMeta(dashboardCache.data, {
+      source: 'live',
+      stale: false,
+      refreshing: false,
+      now: new Date(),
+    });
   } catch (error) {
     return {
       generatedAt: formatGeneratedAt(now),
       latest: null,
       repositories: [],
       error: error.message || String(error),
+      cache: {
+        source: 'none',
+        stale: true,
+        refreshing: false,
+        lastUpdated: 'Never',
+        lastUpdatedAgo: 'never',
+        lastError: error.message || String(error),
+        ttlSeconds: Math.floor(cacheTtlMs / 1000),
+        refreshDurationMs: 0,
+      },
     };
   }
+}
+
+async function refreshDashboardCache() {
+  if (dashboardCache.inFlight) {
+    return dashboardCache.inFlight;
+  }
+
+  dashboardCache.inFlight = (async () => {
+    const startedAt = Date.now();
+    const viewModel = await buildDashboardSnapshot();
+    dashboardCache.data = viewModel;
+    dashboardCache.updatedAt = Date.now();
+    dashboardCache.lastError = '';
+    dashboardCache.refreshDurationMs = Date.now() - startedAt;
+    return viewModel;
+  })()
+    .catch((error) => {
+      dashboardCache.lastError = error.message || String(error);
+      throw error;
+    })
+    .finally(() => {
+      dashboardCache.inFlight = null;
+    });
+
+  return dashboardCache.inFlight;
+}
+
+function withCacheMeta(baseViewModel, options) {
+  const vm = cloneViewModel(baseViewModel);
+  const lastUpdatedDate = dashboardCache.updatedAt ? new Date(dashboardCache.updatedAt) : null;
+
+  vm.cache = {
+    source: options.source,
+    stale: options.stale,
+    refreshing: options.refreshing,
+    lastUpdated: lastUpdatedDate ? formatGeneratedAt(lastUpdatedDate) : 'Never',
+    lastUpdatedAgo: lastUpdatedDate ? timeAgo(options.now.getTime() - lastUpdatedDate.getTime()) : 'never',
+    lastError: dashboardCache.lastError,
+    ttlSeconds: Math.floor(cacheTtlMs / 1000),
+    refreshDurationMs: dashboardCache.refreshDurationMs,
+  };
+
+  return vm;
+}
+
+function cloneViewModel(viewModel) {
+  return JSON.parse(JSON.stringify(viewModel));
+}
+
+async function buildDashboardSnapshot() {
+  const now = new Date();
+  const entries = await listBorgmaticArchives();
+  const repositories = [];
+  let latest = null;
+
+  for (let i = 0; i < entries.length; i += 1) {
+    const entry = entries[i] || {};
+    const repository = entry.repository || {};
+    const parsedArchives = (entry.archives || [])
+      .map((archive) => {
+        const parsedTime = parseArchiveTime(archive);
+        if (!parsedTime) return null;
+        return {
+          name: archive.name || archive.archive || 'Unnamed archive',
+          time: parsedTime,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.time - a.time);
+
+    const repoName = chooseRepoName(repository);
+    const locationFull = repository.location || '';
+    const locationMasked = maskLocation(locationFull);
+
+    const repoView = {
+      id: `repo-${i}`,
+      name: repoName,
+      locationFull,
+      locationMasked,
+      latest: parsedArchives[0] ? formatTimestampLong(parsedArchives[0].time) : '',
+      latestAgo: parsedArchives[0] ? timeAgo(now.getTime() - parsedArchives[0].time.getTime()) : '',
+      archives: parsedArchives.map((archive) => ({
+        name: archive.name,
+        timestamp: formatTimestampShort(archive.time),
+        ago: timeAgo(now.getTime() - archive.time.getTime()),
+      })),
+    };
+
+    if (parsedArchives[0] && (!latest || parsedArchives[0].time > latest.time)) {
+      latest = {
+        repository: repoName,
+        time: parsedArchives[0].time,
+      };
+    }
+
+    repositories.push(repoView);
+  }
+
+  repositories.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+
+  return {
+    generatedAt: formatGeneratedAt(now),
+    latest: latest
+      ? {
+          repository: latest.repository,
+          timestamp: formatTimestampLong(latest.time),
+          ago: timeAgo(now.getTime() - latest.time.getTime()),
+        }
+      : null,
+    repositories,
+    error: '',
+  };
 }
 
 async function listBorgmaticArchives() {

@@ -44,10 +44,39 @@
     return `<header id="dashboard-root" class="mb-8 rounded-3xl border border-slate-800 bg-slate-900/75 p-8 shadow-2xl shadow-cyan-900/20 backdrop-blur">
         <p class="text-xs uppercase tracking-[0.22em] text-cyan-300/90">Borgmatic Backup Dashboard</p>
         ${hero}
+        ${cacheMeta}
         <p class="mt-5 text-sm text-slate-400">Generated at ${escapeHtml(viewModel.generatedAt || '')}</p>
       </header>
       ${errorBlock}
       <section class="grid gap-6 md:grid-cols-2">${repositories}</section>`;
+  }
+
+  function renderCacheMeta(cache) {
+    if (!cache) {
+      return '';
+    }
+
+    let statusClass = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200';
+    let statusText = 'Fresh cache';
+
+    if (cache.refreshing) {
+      statusClass = 'border-amber-500/40 bg-amber-500/10 text-amber-200';
+      statusText = 'Refreshing in background';
+    } else if (cache.stale) {
+      statusClass = 'border-rose-500/40 bg-rose-500/10 text-rose-200';
+      statusText = 'Stale cache';
+    }
+
+    const lastError = cache.lastError
+      ? `<p class="mt-1 break-all text-xs text-rose-200">Last refresh error: ${escapeHtml(cache.lastError)}</p>`
+      : '';
+
+    return `<div class="mt-4 rounded-xl border ${statusClass} p-3">
+      <p class="text-sm font-semibold">${statusText}</p>
+      <p class="mt-1 text-xs">Last updated ${escapeHtml(cache.lastUpdatedAgo || 'unknown')} (${escapeHtml(cache.lastUpdated || 'unknown')})</p>
+      <p class="mt-1 text-xs">Cache TTL: ${escapeHtml(String(cache.ttlSeconds || 0))}s | Refresh: ${escapeHtml(String(cache.refreshDurationMs || 0))}ms</p>
+      ${lastError}
+    </div>`;
   }
 
   function renderRepositoryCard(repository) {
@@ -122,3 +151,4 @@
       .replaceAll("'", '&#39;');
   }
 })();
+    const cacheMeta = renderCacheMeta(viewModel.cache);
