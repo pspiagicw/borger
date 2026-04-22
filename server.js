@@ -18,9 +18,13 @@ app.get('/healthz', (_req, res) => {
   res.type('text/plain').send('ok');
 });
 
-app.get('/', async (_req, res) => {
+app.get('/api/dashboard', async (_req, res) => {
   const viewModel = await buildDashboardViewModel();
-  res.status(200).type('html').send(renderPage(viewModel));
+  res.status(200).json(viewModel);
+});
+
+app.get('/', (_req, res) => {
+  res.status(200).type('html').send(renderShellPage());
 });
 
 if (listenTarget.host) {
@@ -179,7 +183,6 @@ function parseArchiveTime(archive) {
 
 function normalizeTimestamp(value) {
   let normalized = value.trim();
-
   normalized = normalized.replace(/\.(\d{3})\d+/, '.$1');
 
   if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized)) {
@@ -342,7 +345,7 @@ function timeAgo(deltaMs) {
   return `${value} minute${value === 1 ? '' : 's'} ago`;
 }
 
-function renderPage(viewModel) {
+function renderShellPage() {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -355,112 +358,19 @@ function renderPage(viewModel) {
   <div class="relative isolate overflow-hidden">
     <div class="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_20%,#0ea5e920_0%,#020617_45%),radial-gradient(circle_at_80%_10%,#22c55e20_0%,#020617_40%)]"></div>
     <main class="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-      ${renderDashboard(viewModel)}
+      <section id="dashboard-root" class="rounded-3xl border border-slate-800 bg-slate-900/75 p-8 shadow-2xl shadow-cyan-900/20 backdrop-blur">
+        <p class="text-xs uppercase tracking-[0.22em] text-cyan-300/90">Borgmatic Backup Dashboard</p>
+        <div class="mt-6 flex items-center gap-4">
+          <div class="h-8 w-8 animate-spin rounded-full border-4 border-slate-700 border-t-cyan-400"></div>
+          <div>
+            <p class="text-lg font-semibold text-white">Loading backups...</p>
+            <p class="text-sm text-slate-400">Fetching latest repository data from borgmatic.</p>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
-  <script>
-    document.addEventListener("click", function (event) {
-      const button = event.target.closest("[data-toggle-location]");
-      if (!button) return;
-
-      const id = button.getAttribute("data-toggle-location");
-      const masked = document.getElementById(id + "-masked");
-      const full = document.getElementById(id + "-full");
-      if (!masked || !full) return;
-
-      const isHidden = full.classList.contains("hidden");
-      if (isHidden) {
-        full.classList.remove("hidden");
-        masked.classList.add("hidden");
-        button.textContent = "Hide URL";
-        button.setAttribute("aria-expanded", "true");
-      } else {
-        full.classList.add("hidden");
-        masked.classList.remove("hidden");
-        button.textContent = "Show URL";
-        button.setAttribute("aria-expanded", "false");
-      }
-    });
-  </script>
+  <script src="/static/js/dashboard.js"></script>
 </body>
 </html>`;
-}
-
-function renderDashboard(viewModel) {
-  const hero = viewModel.latest
-    ? `<h1 class="mt-3 text-3xl font-semibold text-white sm:text-4xl">Latest backup</h1>
-       <p class="mt-3 text-xl text-cyan-200">${escapeHtml(viewModel.latest.timestamp)}</p>
-       <p class="mt-2 text-lg text-slate-300">${escapeHtml(viewModel.latest.ago)} on <span class="font-medium text-cyan-300">${escapeHtml(viewModel.latest.repository)}</span></p>`
-    : `<h1 class="mt-3 text-3xl font-semibold text-white sm:text-4xl">No backup data found</h1>
-       <p class="mt-2 text-slate-300">Run borgmatic backups to populate this dashboard.</p>`;
-
-  const errorBlock = viewModel.error
-    ? `<section class="mb-8 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-5 text-rose-100">
-         <h2 class="text-lg font-semibold">Failed to load backups</h2>
-         <p class="mt-2 break-all text-sm">${escapeHtml(viewModel.error)}</p>
-       </section>`
-    : '';
-
-  const repositories = viewModel.repositories.length
-    ? viewModel.repositories.map(renderRepositoryCard).join('')
-    : '<p class="text-slate-300">No repositories found in borgmatic output.</p>';
-
-  return `<header class="mb-8 rounded-3xl border border-slate-800 bg-slate-900/75 p-8 shadow-2xl shadow-cyan-900/20 backdrop-blur">
-    <p class="text-xs uppercase tracking-[0.22em] text-cyan-300/90">Borgmatic Backup Dashboard</p>
-    ${hero}
-    <p class="mt-5 text-sm text-slate-400">Generated at ${escapeHtml(viewModel.generatedAt)}</p>
-  </header>
-  ${errorBlock}
-  <section class="grid gap-6 md:grid-cols-2">${repositories}</section>`;
-}
-
-function renderRepositoryCard(repository) {
-  const archiveHtml = repository.archives.length
-    ? repository.archives
-        .map(
-          (archive) => `<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-              <p class="truncate text-sm font-medium text-slate-100">${escapeHtml(archive.name)}</p>
-              <p class="mt-1 text-xs text-slate-400">${escapeHtml(archive.timestamp)} (${escapeHtml(archive.ago)})</p>
-            </div>`
-        )
-        .join('')
-    : '<p class="text-sm text-slate-500">No archives available.</p>';
-
-  const latestLine = repository.latest
-    ? `<p class="mt-4 text-sm text-slate-300">Latest: <span class="text-cyan-300">${escapeHtml(repository.latest)}</span> (${escapeHtml(repository.latestAgo)})</p>`
-    : '<p class="mt-4 text-sm text-slate-400">No parseable archives found.</p>';
-
-  return `<article class="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-lg shadow-slate-950/50">
-    <h2 class="text-xl font-semibold text-white">${escapeHtml(repository.name)}</h2>
-
-    <div class="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/50 p-3">
-      <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">Repository URL</p>
-      <p id="${escapeHtml(repository.id)}-masked" class="mt-2 truncate font-mono text-sm text-slate-300">${escapeHtml(repository.locationMasked)}</p>
-      <p id="${escapeHtml(repository.id)}-full" class="mt-2 hidden break-all font-mono text-sm text-cyan-200">${escapeHtml(repository.locationFull)}</p>
-      <button
-        type="button"
-        data-toggle-location="${escapeHtml(repository.id)}"
-        class="mt-3 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
-        aria-expanded="false"
-      >
-        Show URL
-      </button>
-    </div>
-
-    ${latestLine}
-
-    <div class="mt-4 max-h-64 space-y-2 overflow-y-auto pr-2">
-      ${archiveHtml}
-    </div>
-  </article>`;
-}
-
-function escapeHtml(value) {
-  const text = String(value ?? '');
-  return text
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
 }
