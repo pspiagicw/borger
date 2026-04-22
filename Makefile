@@ -1,4 +1,4 @@
-APP_ADDR ?= :8080
+APP_ADDR ?= :8090
 GOCACHE := $(CURDIR)/.gocache
 GOPATH := $(CURDIR)/.gopath
 GOENV := GOCACHE=$(GOCACHE) GOPATH=$(GOPATH)
@@ -12,11 +12,11 @@ setup:
 
 .PHONY: dev
 dev:
-	$(GOENV) go run ./cmd/web
+	APP_ADDR=$(APP_ADDR) $(GOENV) go run ./cmd/web
 
 .PHONY: run
 run:
-	$(GOENV) go run ./cmd/web
+	APP_ADDR=$(APP_ADDR) $(GOENV) go run ./cmd/web
 
 .PHONY: test
 test:
