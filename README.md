@@ -4,6 +4,12 @@ Node.js web app that runs:
 `borgmatic -c ~/.config/borgmatic.d list --json`
 and renders a backup dashboard.
 
+The dashboard includes:
+- background cache with stale/fresh indicators
+- repository health badges and retention insights
+- per-repository 6-month trend graph
+- manual refresh button (forces live refresh)
+
 ## Development Run
 
 1. Install deps:

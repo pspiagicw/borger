@@ -1,12 +1,14 @@
 (function () {
-  const root = document.getElementById('dashboard-root');
-  if (!root) return;
-
   loadDashboard();
 
-  async function loadDashboard() {
+  async function loadDashboard(forceRefresh) {
+    const root = document.getElementById('dashboard-root');
+    if (!root) return;
+
+    const query = forceRefresh ? '?refresh=1' : '';
+
     try {
-      const response = await fetch('/api/dashboard', { cache: 'no-store' });
+      const response = await fetch('/api/dashboard' + query, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error('dashboard request failed with status ' + response.status);
       }
@@ -44,15 +46,20 @@
       ? viewModel.repositories.map(renderRepositoryCard).join('')
       : '<p class="text-slate-300">No repositories found in borgmatic output.</p>';
 
-    return `<header id="dashboard-root" class="mb-8 rounded-3xl border border-slate-800 bg-slate-900/75 p-8 shadow-2xl shadow-cyan-900/20 backdrop-blur">
-        <p class="text-xs uppercase tracking-[0.22em] text-cyan-300/90">Borgmatic Backup Dashboard</p>
+    return `<section id="dashboard-root">
+      <header class="mb-8 rounded-3xl border border-slate-800 bg-slate-900/75 p-8 shadow-2xl shadow-cyan-900/20 backdrop-blur">
+        <div class="flex items-start justify-between gap-3">
+          <p class="text-xs uppercase tracking-[0.22em] text-cyan-300/90">Borgmatic Backup Dashboard</p>
+          <button type="button" data-manual-refresh class="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60">Refresh Now</button>
+        </div>
         ${hero}
         ${cacheMeta}
         ${healthSummary}
         <p class="mt-5 text-sm text-slate-400">Generated at ${escapeHtml(viewModel.generatedAt || '')}</p>
       </header>
       ${errorBlock}
-      <section class="grid gap-6 md:grid-cols-2">${repositories}</section>`;
+      <section class="grid gap-6 md:grid-cols-2">${repositories}</section>
+    </section>`;
   }
 
   function renderCacheMeta(cache) {
@@ -115,6 +122,7 @@
     const latestLine = repository.latest
       ? `<p class="mt-4 text-sm text-slate-300">Latest: <span class="text-cyan-300">${escapeHtml(repository.latest)}</span> (${escapeHtml(repository.latestAgo)})</p>`
       : '<p class="mt-4 text-sm text-slate-400">No parseable archives found.</p>';
+
     const retention = repository.retention || {};
     const retentionBlock = `<div class="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
       <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">Retention Insights</p>
@@ -127,6 +135,7 @@
         <p>Largest gap: <span class="text-slate-100">${escapeHtml(retention.largestGapDays || 'n/a')}</span></p>
       </div>
     </div>`;
+
     const trendBlock = renderTrend(repository.trend);
 
     return `<article class="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-lg shadow-slate-950/50">
@@ -188,10 +197,16 @@
   }
 
   document.addEventListener('click', function (event) {
-    const button = event.target.closest('[data-toggle-location]');
-    if (!button) return;
+    const refreshButton = event.target.closest('[data-manual-refresh]');
+    if (refreshButton) {
+      void manualRefresh(refreshButton);
+      return;
+    }
 
-    const id = button.getAttribute('data-toggle-location');
+    const toggleButton = event.target.closest('[data-toggle-location]');
+    if (!toggleButton) return;
+
+    const id = toggleButton.getAttribute('data-toggle-location');
     const masked = document.getElementById(id + '-masked');
     const full = document.getElementById(id + '-full');
     if (!masked || !full) return;
@@ -200,15 +215,21 @@
     if (isHidden) {
       full.classList.remove('hidden');
       masked.classList.add('hidden');
-      button.textContent = 'Hide URL';
-      button.setAttribute('aria-expanded', 'true');
+      toggleButton.textContent = 'Hide URL';
+      toggleButton.setAttribute('aria-expanded', 'true');
     } else {
       full.classList.add('hidden');
       masked.classList.remove('hidden');
-      button.textContent = 'Show URL';
-      button.setAttribute('aria-expanded', 'false');
+      toggleButton.textContent = 'Show URL';
+      toggleButton.setAttribute('aria-expanded', 'false');
     }
   });
+
+  async function manualRefresh(button) {
+    button.disabled = true;
+    button.textContent = 'Refreshing...';
+    await loadDashboard(true);
+  }
 
   function escapeHtml(value) {
     const text = String(value ?? '');

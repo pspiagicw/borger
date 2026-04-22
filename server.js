@@ -27,8 +27,9 @@ app.get('/healthz', (_req, res) => {
   res.type('text/plain').send('ok');
 });
 
-app.get('/api/dashboard', async (_req, res) => {
-  const viewModel = await getDashboardViewModel();
+app.get('/api/dashboard', async (req, res) => {
+  const forceRefresh = req.query.refresh === '1';
+  const viewModel = await getDashboardViewModel({ forceRefresh });
   res.status(200).json(viewModel);
 });
 
@@ -80,11 +81,52 @@ function getEnvNumber(name, fallback) {
   return parsed;
 }
 
-async function getDashboardViewModel() {
+async function getDashboardViewModel(options = {}) {
+  const forceRefresh = Boolean(options.forceRefresh);
   const now = new Date();
   const hasCache = Boolean(dashboardCache.data);
   const cacheAgeMs = hasCache ? now.getTime() - dashboardCache.updatedAt : Infinity;
   const isFresh = hasCache && cacheAgeMs <= cacheTtlMs;
+
+  if (forceRefresh) {
+    try {
+      await refreshDashboardCache();
+      return withCacheMeta(dashboardCache.data, {
+        source: 'live',
+        stale: false,
+        refreshing: false,
+        now: new Date(),
+      });
+    } catch (error) {
+      if (hasCache) {
+        const staleVm = withCacheMeta(dashboardCache.data, {
+          source: 'cache',
+          stale: true,
+          refreshing: false,
+          now: new Date(),
+        });
+        staleVm.error = `Manual refresh failed: ${error.message || String(error)}`;
+        return staleVm;
+      }
+
+      return {
+        generatedAt: formatGeneratedAt(now),
+        latest: null,
+        repositories: [],
+        error: error.message || String(error),
+        cache: {
+          source: 'none',
+          stale: true,
+          refreshing: false,
+          lastUpdated: 'Never',
+          lastUpdatedAgo: 'never',
+          lastError: error.message || String(error),
+          ttlSeconds: Math.floor(cacheTtlMs / 1000),
+          refreshDurationMs: 0,
+        },
+      };
+    }
+  }
 
   if (isFresh) {
     return withCacheMeta(dashboardCache.data, {
