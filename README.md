@@ -48,3 +48,4 @@ and renders a backup dashboard.
 ## Environment variables
 
 - `APP_ADDR` (default `:8090`)
+- `APP_TIMEZONE` (default `Asia/Kolkata`; set `auto` to use server timezone)

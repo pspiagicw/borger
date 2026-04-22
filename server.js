@@ -9,6 +9,8 @@ const execFileAsync = promisify(execFile);
 const app = express();
 const appAddr = process.env.APP_ADDR || ':8080';
 const listenTarget = normalizeListenTarget(appAddr);
+const appTimeZone = resolveTimeZone(process.env.APP_TIMEZONE);
+const appTimeZoneLabel = appTimeZone === 'Asia/Kolkata' ? 'IST' : appTimeZone;
 
 app.use('/static', express.static(path.join(__dirname, 'web', 'static')));
 
@@ -251,7 +253,8 @@ const longDateFormatter = new Intl.DateTimeFormat('en-US', {
   hour: '2-digit',
   minute: '2-digit',
   hour12: false,
-  timeZone: 'UTC',
+  timeZone: appTimeZone,
+  timeZoneName: 'short',
 });
 
 const shortDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -261,7 +264,8 @@ const shortDateFormatter = new Intl.DateTimeFormat('en-US', {
   hour: '2-digit',
   minute: '2-digit',
   hour12: false,
-  timeZone: 'UTC',
+  timeZone: appTimeZone,
+  timeZoneName: 'short',
 });
 
 const generatedAtFormatter = new Intl.DateTimeFormat('en-US', {
@@ -273,19 +277,42 @@ const generatedAtFormatter = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
   second: '2-digit',
   hour12: false,
-  timeZone: 'UTC',
+  timeZone: appTimeZone,
+  timeZoneName: 'short',
 });
 
 function formatTimestampLong(date) {
-  return `${longDateFormatter.format(date)} UTC`;
+  return normalizeFormattedTimezone(longDateFormatter.format(date));
 }
 
 function formatTimestampShort(date) {
-  return `${shortDateFormatter.format(date)} UTC`;
+  return normalizeFormattedTimezone(shortDateFormatter.format(date));
 }
 
 function formatGeneratedAt(date) {
-  return `${generatedAtFormatter.format(date)} UTC`;
+  return normalizeFormattedTimezone(generatedAtFormatter.format(date));
+}
+
+function resolveTimeZone(configuredTimeZone) {
+  if (configuredTimeZone && configuredTimeZone !== 'auto') {
+    return configuredTimeZone;
+  }
+
+  if (configuredTimeZone === 'auto') {
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (detected) {
+      return detected;
+    }
+  }
+
+  return 'Asia/Kolkata';
+}
+
+function normalizeFormattedTimezone(value) {
+  if (appTimeZone === 'Asia/Kolkata') {
+    return value.replace(/GMT\+5:30|UTC\+5:30/g, appTimeZoneLabel);
+  }
+  return value;
 }
 
 function timeAgo(deltaMs) {
