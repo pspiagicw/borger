@@ -19,7 +19,6 @@ import (
 
 func main() {
 	addr := envOrDefault("APP_ADDR", ":8080")
-	borgmaticBin := envOrDefault("BORGMATIC_BIN", "borgmatic")
 
 	tmpl, err := template.ParseFS(
 		webassets.FS,
@@ -35,7 +34,7 @@ func main() {
 		log.Fatalf("open static assets: %v", err)
 	}
 
-	client := borgmatic.NewClient(borgmaticBin, 60*time.Second)
+	client := borgmatic.NewClient(60 * time.Second)
 	service := dashboard.NewService(client, time.Now)
 	handlers := web.NewHandlers(service, tmpl)
 

@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -27,19 +29,18 @@ type ListEntry struct {
 }
 
 type Client struct {
-	binary  string
 	timeout time.Duration
 }
 
-func NewClient(binary string, timeout time.Duration) *Client {
-	return &Client{binary: binary, timeout: timeout}
+func NewClient(timeout time.Duration) *Client {
+	return &Client{timeout: timeout}
 }
 
 func (c *Client) List(ctx context.Context) ([]ListEntry, error) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(timeoutCtx, c.binary, "list", "--json")
+	cmd := exec.CommandContext(timeoutCtx, "borgmatic", "-c", borgmaticConfigDir(), "list", "--json")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -56,4 +57,12 @@ func (c *Client) List(ctx context.Context) ([]ListEntry, error) {
 	}
 
 	return entries, nil
+}
+
+func borgmaticConfigDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "~/.config/borgmatic.d"
+	}
+	return filepath.Join(homeDir, ".config", "borgmatic.d")
 }

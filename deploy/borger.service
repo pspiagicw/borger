@@ -9,7 +9,6 @@ Group=borger
 WorkingDirectory=/opt/borger
 ExecStart=/opt/borger/borger
 Environment=APP_ADDR=:8080
-Environment=BORGMATIC_BIN=borgmatic
 Restart=on-failure
 RestartSec=5
 

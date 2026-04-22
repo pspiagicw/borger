@@ -2,6 +2,9 @@
 
 Simple Go web app that runs `borgmatic list --json` and renders a dashboard for repositories and archives.
 
+The app runs borgmatic as:
+`borgmatic -c ~/.config/borgmatic.d list --json`
+
 ## Development Run
 
 1. Install deps:
@@ -45,4 +48,3 @@ Simple Go web app that runs `borgmatic list --json` and renders a dashboard for 
 ## Environment variables
 
 - `APP_ADDR` (default `:8080`)
-- `BORGMATIC_BIN` (default `borgmatic`)
