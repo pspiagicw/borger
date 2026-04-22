@@ -222,6 +222,7 @@ async function buildDashboardSnapshot() {
         ago: timeAgo(now.getTime() - archive.time.getTime()),
       })),
     };
+    repoView.retention = buildRetentionInsights(parsedArchives);
 
     const health = evaluateRepositoryHealth(parsedArchives[0]?.time || null, now);
     repoView.healthStatus = health.status;
@@ -254,6 +255,49 @@ async function buildDashboardSnapshot() {
     healthSummary,
     error: '',
   };
+}
+
+function buildRetentionInsights(parsedArchives) {
+  const totalArchives = parsedArchives.length;
+  if (totalArchives === 0) {
+    return {
+      totalArchives: 0,
+      newest: 'n/a',
+      oldest: 'n/a',
+      spanDays: 0,
+      avgIntervalDays: 'n/a',
+      largestGapDays: 'n/a',
+    };
+  }
+
+  const newest = parsedArchives[0].time;
+  const oldest = parsedArchives[totalArchives - 1].time;
+  const spanDays = Math.max(0, Math.round((newest.getTime() - oldest.getTime()) / (24 * 60 * 60 * 1000)));
+
+  const gapsMs = [];
+  for (let i = 0; i < parsedArchives.length - 1; i += 1) {
+    gapsMs.push(parsedArchives[i].time.getTime() - parsedArchives[i + 1].time.getTime());
+  }
+
+  const avgGapMs = gapsMs.length > 0 ? gapsMs.reduce((sum, value) => sum + value, 0) / gapsMs.length : null;
+  const largestGapMs = gapsMs.length > 0 ? Math.max(...gapsMs) : null;
+
+  return {
+    totalArchives,
+    newest: formatTimestampShort(newest),
+    oldest: formatTimestampShort(oldest),
+    spanDays,
+    avgIntervalDays: avgGapMs ? toDayLabel(avgGapMs) : 'n/a',
+    largestGapDays: largestGapMs ? toDayLabel(largestGapMs) : 'n/a',
+  };
+}
+
+function toDayLabel(durationMs) {
+  const days = durationMs / (24 * 60 * 60 * 1000);
+  if (days < 1) {
+    return '<1 day';
+  }
+  return `${days.toFixed(1)} days`;
 }
 
 function evaluateRepositoryHealth(latestTime, now) {

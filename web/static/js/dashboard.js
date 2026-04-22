@@ -115,6 +115,18 @@
     const latestLine = repository.latest
       ? `<p class="mt-4 text-sm text-slate-300">Latest: <span class="text-cyan-300">${escapeHtml(repository.latest)}</span> (${escapeHtml(repository.latestAgo)})</p>`
       : '<p class="mt-4 text-sm text-slate-400">No parseable archives found.</p>';
+    const retention = repository.retention || {};
+    const retentionBlock = `<div class="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+      <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">Retention Insights</p>
+      <div class="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
+        <p>Archives: <span class="text-slate-100">${escapeHtml(String(retention.totalArchives ?? 0))}</span></p>
+        <p>Span: <span class="text-slate-100">${escapeHtml(String(retention.spanDays ?? 0))} days</span></p>
+        <p>Newest: <span class="text-slate-100">${escapeHtml(retention.newest || 'n/a')}</span></p>
+        <p>Oldest: <span class="text-slate-100">${escapeHtml(retention.oldest || 'n/a')}</span></p>
+        <p>Avg interval: <span class="text-slate-100">${escapeHtml(retention.avgIntervalDays || 'n/a')}</span></p>
+        <p>Largest gap: <span class="text-slate-100">${escapeHtml(retention.largestGapDays || 'n/a')}</span></p>
+      </div>
+    </div>`;
 
     return `<article class="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-lg shadow-slate-950/50">
       <div class="flex items-start justify-between gap-3">
@@ -138,6 +150,7 @@
       </div>
 
       ${latestLine}
+      ${retentionBlock}
 
       <div class="mt-4 max-h-64 space-y-2 overflow-y-auto pr-2">${archiveHtml}</div>
     </article>`;
