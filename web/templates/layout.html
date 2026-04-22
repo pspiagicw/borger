@@ -1,0 +1,19 @@
+{{ define "layout" }}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Borger Dashboard</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="relative isolate overflow-hidden">
+    <div class="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_20%,#0ea5e920_0%,#020617_45%),radial-gradient(circle_at_80%_10%,#22c55e20_0%,#020617_40%)]"></div>
+    <main class="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+      {{ template "dashboard" . }}
+    </main>
+  </div>
+</body>
+</html>
+{{ end }}
