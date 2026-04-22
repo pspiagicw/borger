@@ -2,6 +2,7 @@ package main
 
 import (
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"borger/internal/borgmatic"
 	"borger/internal/dashboard"
 	"borger/internal/web"
+	webassets "borger/web"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -19,12 +21,18 @@ func main() {
 	addr := envOrDefault("APP_ADDR", ":8080")
 	borgmaticBin := envOrDefault("BORGMATIC_BIN", "borgmatic")
 
-	tmpl, err := template.ParseFiles(
-		"web/templates/layout.html",
-		"web/templates/dashboard.html",
+	tmpl, err := template.ParseFS(
+		webassets.FS,
+		"templates/layout.html",
+		"templates/dashboard.html",
 	)
 	if err != nil {
 		log.Fatalf("parse templates: %v", err)
+	}
+
+	staticFS, err := fs.Sub(webassets.FS, "static")
+	if err != nil {
+		log.Fatalf("open static assets: %v", err)
 	}
 
 	client := borgmatic.NewClient(borgmaticBin, 60*time.Second)
@@ -40,7 +48,7 @@ func main() {
 
 	r.Get("/", handlers.Dashboard)
 	r.Get("/healthz", handlers.Healthz)
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
+	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	log.Printf("server listening on %s", addr)
 	if err := http.ListenAndServe(addr, r); err != nil {

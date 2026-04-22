@@ -1,0 +1,17 @@
+[Unit]
+Description=Borger Borgmatic Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=borger
+Group=borger
+WorkingDirectory=/opt/borger
+ExecStart=/opt/borger/borger
+Environment=APP_ADDR=:8080
+Environment=BORGMATIC_BIN=borgmatic
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
