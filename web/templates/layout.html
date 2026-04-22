@@ -14,6 +14,34 @@
       {{ template "dashboard" . }}
     </main>
   </div>
+  <script>
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest("[data-toggle-location]");
+      if (!button) {
+        return;
+      }
+
+      var id = button.getAttribute("data-toggle-location");
+      var masked = document.getElementById(id + "-masked");
+      var full = document.getElementById(id + "-full");
+      if (!masked || !full) {
+        return;
+      }
+
+      var isHidden = full.classList.contains("hidden");
+      if (isHidden) {
+        full.classList.remove("hidden");
+        masked.classList.add("hidden");
+        button.textContent = "Hide URL";
+        button.setAttribute("aria-expanded", "true");
+      } else {
+        full.classList.add("hidden");
+        masked.classList.remove("hidden");
+        button.textContent = "Show URL";
+        button.setAttribute("aria-expanded", "false");
+      }
+    });
+  </script>
 </body>
 </html>
 {{ end }}

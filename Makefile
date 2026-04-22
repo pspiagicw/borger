@@ -22,6 +22,10 @@ run:
 test:
 	$(GOENV) go test ./...
 
+.PHONY: vet
+vet:
+	$(GOENV) go vet ./...
+
 .PHONY: build
 build:
 	mkdir -p bin

@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -37,11 +38,13 @@ type LatestBackupView struct {
 }
 
 type RepositoryView struct {
-	Name      string
-	Location  string
-	Latest    string
-	LatestAgo string
-	Archives  []ArchiveView
+	ID             string
+	Name           string
+	LocationFull   string
+	LocationMasked string
+	Latest         string
+	LatestAgo      string
+	Archives       []ArchiveView
 }
 
 type ArchiveView struct {
@@ -60,7 +63,7 @@ func (s *Service) Build(ctx context.Context) ViewModel {
 	entries, err := s.source.List(ctx)
 	if err != nil {
 		return ViewModel{
-			GeneratedAt: now.Format(time.RFC1123),
+			GeneratedAt: formatGeneratedAt(now),
 			Error:       err.Error(),
 		}
 	}
@@ -70,7 +73,7 @@ func (s *Service) Build(ctx context.Context) ViewModel {
 	var globalLatestTime time.Time
 	foundLatest := false
 
-	for _, entry := range entries {
+	for idx, entry := range entries {
 		repoName := chooseRepoName(entry.Repository)
 		parsed := make([]parsedArchive, 0, len(entry.Archives))
 
@@ -87,20 +90,22 @@ func (s *Service) Build(ctx context.Context) ViewModel {
 		})
 
 		repoView := RepositoryView{
-			Name:     repoName,
-			Location: entry.Repository.Location,
-			Archives: make([]ArchiveView, 0, len(parsed)),
+			ID:             fmt.Sprintf("repo-%d", idx),
+			Name:           repoName,
+			LocationFull:   entry.Repository.Location,
+			LocationMasked: maskLocation(entry.Repository.Location),
+			Archives:       make([]ArchiveView, 0, len(parsed)),
 		}
 
 		if len(parsed) > 0 {
-			repoView.Latest = parsed[0].Time.Format("2006-01-02 15:04:05 MST")
+			repoView.Latest = formatTimestampLong(parsed[0].Time)
 			repoView.LatestAgo = timeAgo(now.Sub(parsed[0].Time))
 		}
 
 		for _, archive := range parsed {
 			repoView.Archives = append(repoView.Archives, ArchiveView{
 				Name:      archive.Name,
-				Timestamp: archive.Time.Format("2006-01-02 15:04:05 MST"),
+				Timestamp: formatTimestampShort(archive.Time),
 				Ago:       timeAgo(now.Sub(archive.Time)),
 			})
 		}
@@ -119,14 +124,14 @@ func (s *Service) Build(ctx context.Context) ViewModel {
 	})
 
 	vm := ViewModel{
-		GeneratedAt:  now.Format(time.RFC1123),
+		GeneratedAt:  formatGeneratedAt(now),
 		Repositories: repositories,
 	}
 
 	if foundLatest {
 		vm.Latest = &LatestBackupView{
 			Repository: globalLatestRepo,
-			Timestamp:  globalLatestTime.Format("2006-01-02 15:04:05 MST"),
+			Timestamp:  formatTimestampLong(globalLatestTime),
 			Ago:        timeAgo(now.Sub(globalLatestTime)),
 		}
 	}
@@ -138,10 +143,64 @@ func chooseRepoName(repo borgmatic.Repository) string {
 	if repo.Label != "" {
 		return repo.Label
 	}
+
+	host := extractHost(repo.Location)
+	if host != "" {
+		return fmt.Sprintf("Repository @ %s", host)
+	}
+
 	if repo.Location == "" {
 		return "Unknown Repository"
 	}
-	return repo.Location
+	return "Repository"
+}
+
+func extractHost(location string) string {
+	if location == "" {
+		return ""
+	}
+
+	if strings.Contains(location, "://") {
+		parsed, err := url.Parse(location)
+		if err == nil {
+			host := parsed.Host
+			if host != "" {
+				if strings.Contains(host, "@") {
+					parts := strings.Split(host, "@")
+					return parts[len(parts)-1]
+				}
+				return host
+			}
+		}
+	}
+
+	if strings.Contains(location, "@") {
+		parts := strings.SplitN(location, "@", 2)
+		rest := parts[1]
+		if strings.Contains(rest, ":") {
+			return strings.SplitN(rest, ":", 2)[0]
+		}
+		return rest
+	}
+
+	return ""
+}
+
+func maskLocation(location string) string {
+	if location == "" {
+		return "Location unavailable"
+	}
+
+	host := extractHost(location)
+	if host != "" {
+		return fmt.Sprintf("%s (hidden)", host)
+	}
+
+	if len(location) <= 18 {
+		return "location hidden"
+	}
+
+	return location[:10] + "..." + location[len(location)-8:]
 }
 
 func parseArchiveTime(archive borgmatic.Archive) (time.Time, bool) {
@@ -167,6 +226,18 @@ func parseArchiveTime(archive borgmatic.Archive) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
+}
+
+func formatTimestampLong(ts time.Time) string {
+	return ts.UTC().Format("Monday, January 2, 2006 at 15:04 UTC")
+}
+
+func formatTimestampShort(ts time.Time) string {
+	return ts.UTC().Format("Jan 2, 2006 at 15:04 UTC")
+}
+
+func formatGeneratedAt(ts time.Time) string {
+	return ts.UTC().Format("Monday, January 2, 2006 at 15:04:05 UTC")
 }
 
 func timeAgo(delta time.Duration) string {
