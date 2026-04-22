@@ -127,6 +127,7 @@
         <p>Largest gap: <span class="text-slate-100">${escapeHtml(retention.largestGapDays || 'n/a')}</span></p>
       </div>
     </div>`;
+    const trendBlock = renderTrend(repository.trend);
 
     return `<article class="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-lg shadow-slate-950/50">
       <div class="flex items-start justify-between gap-3">
@@ -151,9 +152,32 @@
 
       ${latestLine}
       ${retentionBlock}
+      ${trendBlock}
 
       <div class="mt-4 max-h-64 space-y-2 overflow-y-auto pr-2">${archiveHtml}</div>
     </article>`;
+  }
+
+  function renderTrend(trend) {
+    if (!trend || !Array.isArray(trend.points) || trend.points.length === 0) {
+      return '';
+    }
+
+    const maxCount = Math.max(trend.maxCount || 1, 1);
+    const bars = trend.points
+      .map((point) => {
+        const height = Math.max(8, Math.round((point.count / maxCount) * 56));
+        return `<div class="flex flex-col items-center gap-1">
+          <div class="w-7 rounded-t-md bg-cyan-400/80" style="height:${height}px" title="${escapeHtml(point.label)}: ${escapeHtml(String(point.count))}"></div>
+          <span class="text-[10px] text-slate-400">${escapeHtml(point.label)}</span>
+        </div>`;
+      })
+      .join('');
+
+    return `<div class="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+      <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">Backup Trend (6 months)</p>
+      <div class="mt-3 flex items-end gap-2">${bars}</div>
+    </div>`;
   }
 
   function healthBadgeClass(status) {

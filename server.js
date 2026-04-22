@@ -223,6 +223,7 @@ async function buildDashboardSnapshot() {
       })),
     };
     repoView.retention = buildRetentionInsights(parsedArchives);
+    repoView.trend = buildMonthlyTrend(parsedArchives, now, 6);
 
     const health = evaluateRepositoryHealth(parsedArchives[0]?.time || null, now);
     repoView.healthStatus = health.status;
@@ -298,6 +299,31 @@ function toDayLabel(durationMs) {
     return '<1 day';
   }
   return `${days.toFixed(1)} days`;
+}
+
+function buildMonthlyTrend(parsedArchives, now, months) {
+  const buckets = [];
+  for (let i = months - 1; i >= 0; i -= 1) {
+    const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    const label = date.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    buckets.push({ key, label, count: 0 });
+  }
+
+  for (const archive of parsedArchives) {
+    const time = archive.time;
+    const key = `${time.getUTCFullYear()}-${String(time.getUTCMonth() + 1).padStart(2, '0')}`;
+    const bucket = buckets.find((item) => item.key === key);
+    if (bucket) {
+      bucket.count += 1;
+    }
+  }
+
+  const maxCount = Math.max(...buckets.map((item) => item.count), 1);
+  return {
+    maxCount,
+    points: buckets.map((item) => ({ label: item.label, count: item.count })),
+  };
 }
 
 function evaluateRepositoryHealth(latestTime, now) {
