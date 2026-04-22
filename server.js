@@ -187,6 +187,7 @@ async function buildDashboardSnapshot() {
   const now = new Date();
   const entries = await listBorgmaticArchives();
   const repositories = [];
+  const healthSummary = { healthy: 0, warning: 0, critical: 0, noData: 0 };
   let latest = null;
 
   for (let i = 0; i < entries.length; i += 1) {
@@ -222,6 +223,12 @@ async function buildDashboardSnapshot() {
       })),
     };
 
+    const health = evaluateRepositoryHealth(parsedArchives[0]?.time || null, now);
+    repoView.healthStatus = health.status;
+    repoView.healthLabel = health.label;
+    repoView.healthReason = health.reason;
+    healthSummary[health.bucket] += 1;
+
     if (parsedArchives[0] && (!latest || parsedArchives[0].time > latest.time)) {
       latest = {
         repository: repoName,
@@ -244,7 +251,47 @@ async function buildDashboardSnapshot() {
         }
       : null,
     repositories,
+    healthSummary,
     error: '',
+  };
+}
+
+function evaluateRepositoryHealth(latestTime, now) {
+  if (!latestTime) {
+    return {
+      status: 'no-data',
+      label: 'No Data',
+      reason: 'No parseable backups found',
+      bucket: 'noData',
+    };
+  }
+
+  const ageMs = now.getTime() - latestTime.getTime();
+  const hours = ageMs / (60 * 60 * 1000);
+
+  if (hours <= 24) {
+    return {
+      status: 'healthy',
+      label: 'Healthy',
+      reason: `Latest backup ${timeAgo(ageMs)}`,
+      bucket: 'healthy',
+    };
+  }
+
+  if (hours <= 72) {
+    return {
+      status: 'warning',
+      label: 'Warning',
+      reason: `Backup age is ${timeAgo(ageMs)}`,
+      bucket: 'warning',
+    };
+  }
+
+  return {
+    status: 'critical',
+    label: 'Critical',
+    reason: `Backup is stale (${timeAgo(ageMs)})`,
+    bucket: 'critical',
   };
 }
 

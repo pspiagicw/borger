@@ -30,6 +30,9 @@
       : `<h1 class="mt-3 text-3xl font-semibold text-white sm:text-4xl">No backup data found</h1>
          <p class="mt-2 text-slate-300">Run borgmatic backups to populate this dashboard.</p>`;
 
+    const cacheMeta = renderCacheMeta(viewModel.cache);
+    const healthSummary = renderHealthSummary(viewModel.healthSummary);
+
     const errorBlock = viewModel.error
       ? `<section class="mb-8 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-5 text-rose-100">
            <h2 class="text-lg font-semibold">Failed to load backups</h2>
@@ -45,6 +48,7 @@
         <p class="text-xs uppercase tracking-[0.22em] text-cyan-300/90">Borgmatic Backup Dashboard</p>
         ${hero}
         ${cacheMeta}
+        ${healthSummary}
         <p class="mt-5 text-sm text-slate-400">Generated at ${escapeHtml(viewModel.generatedAt || '')}</p>
       </header>
       ${errorBlock}
@@ -79,6 +83,23 @@
     </div>`;
   }
 
+  function renderHealthSummary(summary) {
+    if (!summary) {
+      return '';
+    }
+
+    return `<div class="mt-4 flex flex-wrap gap-2">
+      ${healthChip('Healthy', summary.healthy || 0, 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200')}
+      ${healthChip('Warning', summary.warning || 0, 'border-amber-500/40 bg-amber-500/10 text-amber-200')}
+      ${healthChip('Critical', summary.critical || 0, 'border-rose-500/40 bg-rose-500/10 text-rose-200')}
+      ${healthChip('No Data', summary.noData || 0, 'border-slate-500/40 bg-slate-500/10 text-slate-200')}
+    </div>`;
+  }
+
+  function healthChip(label, value, classes) {
+    return `<span class="rounded-full border px-3 py-1 text-xs font-semibold ${classes}">${escapeHtml(label)}: ${escapeHtml(String(value))}</span>`;
+  }
+
   function renderRepositoryCard(repository) {
     const archiveHtml = Array.isArray(repository.archives) && repository.archives.length
       ? repository.archives
@@ -96,7 +117,11 @@
       : '<p class="mt-4 text-sm text-slate-400">No parseable archives found.</p>';
 
     return `<article class="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-lg shadow-slate-950/50">
-      <h2 class="text-xl font-semibold text-white">${escapeHtml(repository.name)}</h2>
+      <div class="flex items-start justify-between gap-3">
+        <h2 class="text-xl font-semibold text-white">${escapeHtml(repository.name)}</h2>
+        <span class="rounded-full border px-2.5 py-1 text-xs font-semibold ${healthBadgeClass(repository.healthStatus)}">${escapeHtml(repository.healthLabel || 'Unknown')}</span>
+      </div>
+      <p class="mt-1 text-xs text-slate-400">${escapeHtml(repository.healthReason || '')}</p>
 
       <div class="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/50 p-3">
         <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">Repository URL</p>
@@ -116,6 +141,13 @@
 
       <div class="mt-4 max-h-64 space-y-2 overflow-y-auto pr-2">${archiveHtml}</div>
     </article>`;
+  }
+
+  function healthBadgeClass(status) {
+    if (status === 'healthy') return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200';
+    if (status === 'warning') return 'border-amber-500/40 bg-amber-500/10 text-amber-200';
+    if (status === 'critical') return 'border-rose-500/40 bg-rose-500/10 text-rose-200';
+    return 'border-slate-500/40 bg-slate-500/10 text-slate-200';
   }
 
   document.addEventListener('click', function (event) {
@@ -151,4 +183,3 @@
       .replaceAll("'", '&#39;');
   }
 })();
-    const cacheMeta = renderCacheMeta(viewModel.cache);
