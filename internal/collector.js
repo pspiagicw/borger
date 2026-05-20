@@ -19,6 +19,7 @@ async function collect() {
   if (state.running) return;
   state.running = true;
   const startedAt = Date.now();
+  console.log(`[collector] running borgmatic (config: ${configDir})`);
 
   try {
     const [listResult, infoResult] = await Promise.allSettled([
@@ -28,14 +29,18 @@ async function collect() {
 
     if (listResult.status === 'fulfilled') {
       processListEntries(listResult.value);
+      const repoCount = listResult.value.length;
+      const archiveCount = listResult.value.reduce((s, e) => s + (e.archives || []).length, 0);
+      console.log(`[collector] list ok — ${repoCount} repo(s), ${archiveCount} archive(s)`);
     } else {
       throw listResult.reason;
     }
 
     if (infoResult.status === 'fulfilled') {
       processInfoEntries(infoResult.value);
+      console.log(`[collector] info ok — size data stored`);
     } else {
-      console.warn('borgmatic info failed (size data unavailable):', infoResult.reason.message);
+      console.warn(`[collector] info failed (size data unavailable): ${infoResult.reason.message}`);
     }
 
     state.lastError = '';
@@ -46,6 +51,7 @@ async function collect() {
     state.lastRunAt = Date.now();
     state.lastDurationMs = Date.now() - startedAt;
     state.running = false;
+    console.log(`[collector] done in ${state.lastDurationMs}ms`);
   }
 }
 

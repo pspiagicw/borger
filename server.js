@@ -13,9 +13,10 @@ const collectIntervalMs = getEnvNumber('APP_COLLECT_INTERVAL_SECONDS', 600) * 10
 const timelineWindowMs = 90 * 24 * 60 * 60 * 1000;
 
 // Kick off an immediate collection, then repeat on interval.
-void collector.collect().catch((err) => console.error('Initial collection failed:', err.message));
+console.log(`[collector] interval: every ${Math.floor(collectIntervalMs / 1000)}s`);
+void collector.collect().catch((err) => console.error('[collector] initial collection failed:', err.message));
 setInterval(() => {
-  void collector.collect().catch((err) => console.error('Periodic collection failed:', err.message));
+  void collector.collect().catch((err) => console.error('[collector] periodic collection failed:', err.message));
 }, collectIntervalMs);
 
 app.use('/static', express.static(path.join(__dirname, 'web', 'static')));
