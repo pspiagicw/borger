@@ -55,4 +55,5 @@ The dashboard includes:
 
 - `APP_ADDR` (default `:8090`)
 - `APP_TIMEZONE` (default `Asia/Kolkata`; set `auto` to use server timezone)
-- `APP_CACHE_TTL_SECONDS` (default `120`)
+- `APP_COLLECT_INTERVAL_SECONDS` (default `600` — how often borgmatic is run in the background)
+- `BORGER_DB` (default `~/.local/share/borger/borger.db` — path to the SQLite database)

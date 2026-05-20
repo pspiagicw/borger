@@ -27,7 +27,7 @@ build:
 package:
 	mkdir -p $(DIST_DIR)
 	tar -czf ./$(DIST_DIR)/borger-node-$(VERSION).tar.gz \
-		server.js package.json package-lock.json web deploy
+		server.js internal package.json package-lock.json web deploy
 
 .PHONY: css
 css:
