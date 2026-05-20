@@ -82,6 +82,7 @@ function buildViewModelFromDb() {
       healthReason: health.reason,
       retention: buildRetentionInsights(sorted),
       timeline: buildTimeline(sorted, now),
+      backupCounts: buildBackupCounts(sorted, now),
       size: latestStats ? buildSizeView(latestStats, now) : null,
     };
 
@@ -151,6 +152,27 @@ function buildRetentionInsights(sortedArchives) {
     avgIntervalDays: avgGapMs ? toDayLabel(avgGapMs) : 'n/a',
     largestGapDays: largestGapMs ? toDayLabel(largestGapMs) : 'n/a',
   };
+}
+
+function buildBackupCounts(sortedArchives, now) {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const daysFromMonday = (now.getDay() + 6) % 7;
+  const startOfWeek = startOfToday - daysFromMonday * dayMs;
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+  let today = 0;
+  let thisWeek = 0;
+  let thisMonth = 0;
+
+  for (const a of sortedArchives) {
+    const t = a.archive_time;
+    if (t >= startOfMonth) thisMonth += 1;
+    if (t >= startOfWeek) thisWeek += 1;
+    if (t >= startOfToday) today += 1;
+  }
+
+  return { today, thisWeek, thisMonth };
 }
 
 function buildSizeView(stats, now) {

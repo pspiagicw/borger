@@ -123,6 +123,8 @@
       </div>
       <p class="mt-1 text-xs text-slate-400">${escapeHtml(repo.healthReason || '')}</p>
 
+      ${renderBackupCounts(repo.backupCounts)}
+
       <div class="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/50 p-3">
         <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">Repository URL</p>
         <p id="${escapeHtml(repo.id)}-masked" class="mt-2 truncate font-mono text-sm text-slate-300">${escapeHtml(repo.locationMasked)}</p>
@@ -140,6 +142,25 @@
       ${renderSizePanel(repo.size)}
       ${renderRetentionInsights(repo.retention)}
     </article>`;
+  }
+
+  // --- backup counts ------------------------------------------------------
+
+  function renderBackupCounts(counts) {
+    if (!counts) return '';
+    return `<div class="mt-3 grid grid-cols-3 gap-2">
+      ${countStat(counts.today, 'Today')}
+      ${countStat(counts.thisWeek, 'This week')}
+      ${countStat(counts.thisMonth, 'This month')}
+    </div>`;
+  }
+
+  function countStat(value, label) {
+    const color = value === 0 ? 'text-rose-300' : 'text-white';
+    return `<div class="rounded-lg border border-slate-700 bg-slate-950/50 px-2 py-2 text-center">
+      <p class="text-xl font-bold ${color}">${escapeHtml(String(value))}</p>
+      <p class="mt-0.5 text-[10px] uppercase tracking-wide text-slate-400">${escapeHtml(label)}</p>
+    </div>`;
   }
 
   // --- dot timeline -------------------------------------------------------
