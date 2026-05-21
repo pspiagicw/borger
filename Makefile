@@ -23,6 +23,12 @@ test:
 build:
 	npm run build:css
 
+.PHONY: deploy
+deploy:
+	cp -r server.js internal web /opt/borger/
+	systemctl restart borger
+	systemctl status borger --no-pager -l
+
 .PHONY: package
 package:
 	mkdir -p $(DIST_DIR)
