@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#0f172a"/>
+  <!-- circular arrow representing backup/sync -->
+  <path d="M16 7a9 9 0 1 1-6.364 2.636" fill="none" stroke="#22d3ee" stroke-width="2.4" stroke-linecap="round"/>
+  <!-- arrowhead pointing clockwise -->
+  <polygon points="9,6 6,11 13,10.5" fill="#22d3ee"/>
+</svg>

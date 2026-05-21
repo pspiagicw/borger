@@ -309,6 +309,7 @@ function renderShellPage() {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Borger Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <link rel="stylesheet" href="/static/css/app.css" />
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen">
