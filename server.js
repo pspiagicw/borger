@@ -207,11 +207,8 @@ function evaluateRepositoryHealth(latestTime, now) {
 }
 
 function maskLocation(location) {
-  if (!location) return 'Location unavailable';
-  const host = extractHost(location);
-  if (host) return `${host} (hidden)`;
-  if (location.length <= 18) return 'location hidden';
-  return `${location.slice(0, 10)}...${location.slice(-8)}`;
+  if (!location) return '••••••••';
+  return '••••••••';
 }
 
 function extractHost(location) {
