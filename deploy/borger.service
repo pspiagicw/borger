@@ -4,10 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=borger
-Group=borger
+User=root
 WorkingDirectory=/opt/borger
 ExecStart=/usr/bin/node /opt/borger/server.js
+Environment=HOME=/root
 Environment=APP_ADDR=:8080
 Environment=APP_COLLECT_INTERVAL_SECONDS=600
 Environment=BORGER_DB=/var/lib/borger/borger.db
